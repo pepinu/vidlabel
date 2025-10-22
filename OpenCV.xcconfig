@@ -1,0 +1,18 @@
+// OpenCV Configuration for VidLabel
+// To use: In Xcode, select VidLabel project → Info tab → Configurations →
+// Set Debug and Release to use this config file
+
+// OpenCV Header Search Paths
+HEADER_SEARCH_PATHS = $(inherited) /opt/homebrew/opt/opencv/include/opencv4
+
+// OpenCV Library Search Paths
+LIBRARY_SEARCH_PATHS = $(inherited) /opt/homebrew/opt/opencv/lib
+
+// OpenCV Linker Flags
+OTHER_LDFLAGS = $(inherited) -lopencv_core -lopencv_imgproc -lopencv_video -lopencv_videoio
+
+// Bridging Header for Objective-C++ to Swift
+SWIFT_OBJC_BRIDGING_HEADER = $(SRCROOT)/VidLabel/VidLabel-Bridging-Header.h
+
+// Enable Objective-C++
+CLANG_ENABLE_OBJC_ARC = YES

@@ -87,6 +87,64 @@ struct TrackedObject: Identifiable, Codable {
     }
 }
 
+/// Detection state for auto-detected objects
+enum DetectionState: Codable, Equatable {
+    case detected   // Detected via motion analysis
+    case predicted  // Predicted position based on velocity
+}
+
+/// Represents a proposed detection from auto-detection (pending user review)
+struct DetectionProposal: Identifiable, Codable {
+    let id: UUID
+    var annotations: [Int: BoundingBox]
+    var confidence: [Int: Float]
+    var detectionState: [Int: DetectionState]
+    var color: CodableColor
+    var isAccepted: Bool
+
+    init(
+        id: UUID = UUID(),
+        annotations: [Int: BoundingBox] = [:],
+        confidence: [Int: Float] = [:],
+        detectionState: [Int: DetectionState] = [:],
+        color: CodableColor = CodableColor.random(),
+        isAccepted: Bool = false
+    ) {
+        self.id = id
+        self.annotations = annotations
+        self.confidence = confidence
+        self.detectionState = detectionState
+        self.color = color
+        self.isAccepted = isAccepted
+    }
+
+    /// Get bounding box for a specific frame
+    func boundingBox(at frame: Int) -> BoundingBox? {
+        return annotations[frame]
+    }
+
+    /// Get detection state for a specific frame
+    func state(at frame: Int) -> DetectionState? {
+        return detectionState[frame]
+    }
+
+    /// Remove annotations in a frame range
+    mutating func deleteFrames(in range: ClosedRange<Int>) {
+        for frame in range {
+            annotations.removeValue(forKey: frame)
+            confidence.removeValue(forKey: frame)
+            detectionState.removeValue(forKey: frame)
+        }
+    }
+
+    /// Convert to TrackedObject (when user accepts)
+    func toTrackedObject(label: String) -> TrackedObject {
+        var obj = TrackedObject(id: UUID(), label: label, color: color)
+        obj.annotations = annotations
+        return obj
+    }
+}
+
 /// Codable wrapper for NSColor
 struct CodableColor: Codable, Equatable {
     var red: Double

@@ -227,6 +227,10 @@ class VideoPlayerViewModel: ObservableObject {
         return asset
     }
 
+    var currentAsset: AVAsset? {
+        return asset
+    }
+
     func getFrameRate() -> Double {
         return frameRate
     }

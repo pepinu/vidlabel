@@ -31,6 +31,12 @@ class AnnotationViewModel: ObservableObject {
     @Published var trackingProgress: String = ""
     private var trackingManager = TrackingManager()
 
+    // Auto-detection
+    @Published var detectionProposals: [DetectionProposal] = []
+    @Published var isAutoDetecting: Bool = false
+    @Published var detectionProgress: String = ""
+    private var detectionManager: MotionDetectionManager?
+
     var selectedObject: TrackedObject? {
         guard let id = selectedObjectId else { return nil }
         return trackedObjects.first { $0.id == id }
@@ -311,5 +317,111 @@ class AnnotationViewModel: ObservableObject {
         }
         obj.annotations = newAnnotations
         trackedObjects[idx] = obj
+    }
+
+    // MARK: - Auto-Detection
+
+    func startAutoDetection(
+        asset: AVAsset,
+        frameRange: ClosedRange<Int>,
+        frameRate: Double,
+        videoSize: CGSize
+    ) {
+        isAutoDetecting = true
+        detectionProgress = "Starting detection..."
+
+        let config = MotionDetectionManager.Config()
+        detectionManager = MotionDetectionManager(config: config)
+
+        Task {
+            do {
+                let detectedObjects = try await detectionManager?.autoDetect(
+                    asset: asset,
+                    frameRange: frameRange,
+                    frameRate: frameRate,
+                    videoSize: videoSize
+                ) { current, total, frameNumber in
+                    Task { @MainActor in
+                        self.detectionProgress = "Processing frame \(frameNumber) (\(current)/\(total))"
+                    }
+                }
+
+                await MainActor.run {
+                    // Convert to proposals
+                    if let objects = detectedObjects {
+                        for obj in objects {
+                            let proposal = DetectionProposal(
+                                id: obj.id,
+                                annotations: obj.annotations,
+                                confidence: obj.confidence,
+                                detectionState: obj.detectionState
+                            )
+                            detectionProposals.append(proposal)
+                        }
+                        detectionProgress = "Detection complete: \(objects.count) object(s) found"
+                    }
+                    isAutoDetecting = false
+                }
+            } catch {
+                await MainActor.run {
+                    detectionProgress = "Detection failed: \(error.localizedDescription)"
+                    isAutoDetecting = false
+                }
+            }
+        }
+    }
+
+    func cancelAutoDetection() {
+        detectionManager?.cancel()
+        isAutoDetecting = false
+        detectionProgress = "Detection cancelled"
+    }
+
+    func acceptProposal(proposalId: UUID) {
+        guard let proposal = detectionProposals.first(where: { $0.id == proposalId }) else { return }
+
+        objectCounter += 1
+        let trackedObject = proposal.toTrackedObject(label: "Object \(objectCounter)")
+        trackedObjects.append(trackedObject)
+
+        // Remove from proposals
+        detectionProposals.removeAll { $0.id == proposalId }
+    }
+
+    func rejectProposal(proposalId: UUID) {
+        detectionProposals.removeAll { $0.id == proposalId }
+    }
+
+    func acceptAllProposals() {
+        for proposal in detectionProposals {
+            objectCounter += 1
+            let trackedObject = proposal.toTrackedObject(label: "Object \(objectCounter)")
+            trackedObjects.append(trackedObject)
+        }
+        detectionProposals.removeAll()
+    }
+
+    func rejectAllProposals() {
+        detectionProposals.removeAll()
+    }
+
+    func deleteProposalFrames(proposalId: UUID, range: ClosedRange<Int>) {
+        guard let index = detectionProposals.firstIndex(where: { $0.id == proposalId }) else { return }
+        detectionProposals[index].deleteFrames(in: range)
+
+        // Remove proposal if no frames left
+        if detectionProposals[index].annotations.isEmpty {
+            detectionProposals.remove(at: index)
+        }
+    }
+
+    func getProposalAnnotations(at frameNumber: Int) -> [(proposal: DetectionProposal, box: BoundingBox)] {
+        var results: [(DetectionProposal, BoundingBox)] = []
+        for proposal in detectionProposals {
+            if let box = proposal.boundingBox(at: frameNumber) {
+                results.append((proposal, box))
+            }
+        }
+        return results
     }
 }

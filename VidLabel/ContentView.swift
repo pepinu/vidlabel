@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var annotationViewModel = AnnotationViewModel()
     @State private var isDraggingTimeline = false
     @State private var showObjectsSidebar = true
+    @State private var showAutoDetectPanel = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,12 +24,37 @@ struct ContentView: View {
 
                 Spacer()
 
-                if viewModel.isVideoLoaded && !showObjectsSidebar {
+                if viewModel.isVideoLoaded {
+                    // Auto-Detect toggle
                     Button(action: {
-                        showObjectsSidebar = true
+                        showAutoDetectPanel.toggle()
+                        if showAutoDetectPanel {
+                            showObjectsSidebar = false
+                        }
                     }) {
-                        Image(systemName: "sidebar.right")
-                        Text("Show Objects")
+                        Image(systemName: "wand.and.stars")
+                        Text(showAutoDetectPanel ? "Hide Auto-Detect" : "Auto-Detect")
+                    }
+                    .buttonStyle(.bordered)
+
+                    // Export COCO
+                    Button(action: {
+                        exportCOCO()
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Export COCO")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(annotationViewModel.trackedObjects.isEmpty)
+
+                    if !showObjectsSidebar {
+                        Button(action: {
+                            showObjectsSidebar = true
+                            showAutoDetectPanel = false
+                        }) {
+                            Image(systemName: "sidebar.right")
+                            Text("Show Objects")
+                        }
                     }
                 }
 
@@ -67,6 +93,15 @@ struct ContentView: View {
 
     private var videoContentView: some View {
         HStack(spacing: 0) {
+            // Auto-Detect panel (left side)
+            if showAutoDetectPanel {
+                AutoDetectPanelView(
+                    annotationVM: annotationViewModel,
+                    playerVM: viewModel
+                )
+                Divider()
+            }
+
             // Main video area
             VStack(spacing: 0) {
                 // Video canvas with drawing overlay
@@ -445,6 +480,28 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             viewModel.loadVideo(url: url)
+        }
+    }
+
+    private func exportCOCO() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "annotations.json"
+        panel.message = "Export annotations to COCO format"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let videoFileName = viewModel.getVideoURL()?.deletingPathExtension().lastPathComponent ?? "video"
+                try COCOExporter.exportToCOCO(
+                    trackedObjects: annotationViewModel.trackedObjects,
+                    videoSize: viewModel.videoSize,
+                    videoFileName: videoFileName,
+                    outputURL: url
+                )
+                print("✅ COCO export successful: \(url.path)")
+            } catch {
+                print("❌ COCO export failed: \(error)")
+            }
         }
     }
 }

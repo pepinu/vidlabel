@@ -20,6 +20,7 @@ struct DrawingOverlayView: View {
     var body: some View {
         GeometryReader { geometry in
             let annotations = annotationViewModel.getAnnotations(at: currentFrame)
+            let proposals = annotationViewModel.getProposalAnnotations(at: currentFrame)
 
             // Debug logging
             let _ = {
@@ -33,6 +34,18 @@ struct DrawingOverlayView: View {
             }()
 
             ZStack {
+                // Detection proposals (dashed, semi-transparent)
+                ForEach(proposals, id: \.proposal.id) { item in
+                    let state = item.proposal.state(at: currentFrame)
+                    ProposalBoxView(
+                        box: item.box,
+                        color: item.proposal.color,
+                        state: state ?? .detected,
+                        geometry: geometry,
+                        videoSize: videoSize
+                    )
+                }
+
                 // Existing annotations
                 ForEach(annotations, id: \.object.id) { item in
                     BoundingBoxView(
@@ -177,6 +190,61 @@ struct BoundingBoxView: View {
                 .background(nsColor.opacity(0.9))
                 .cornerRadius(4)
                 .offset(x: rect.minX, y: rect.minY - 20)
+        }
+    }
+}
+
+/// View for rendering a detection proposal (dashed box)
+struct ProposalBoxView: View {
+    let box: BoundingBox
+    let color: CodableColor
+    let state: DetectionState
+    let geometry: GeometryProxy
+    let videoSize: CGSize
+
+    var body: some View {
+        // Calculate actual video display rect (accounting for aspect ratio)
+        let videoRect = AVMakeRect(aspectRatio: videoSize, insideRect: CGRect(origin: .zero, size: geometry.size))
+
+        // Convert normalized coordinates to video pixels
+        let videoPixelRect = box.rect(in: videoSize)
+
+        // Scale to displayed size
+        let scale = videoRect.width / videoSize.width
+        let displayRect = CGRect(
+            x: videoRect.minX + videoPixelRect.minX * scale,
+            y: videoRect.minY + videoPixelRect.minY * scale,
+            width: videoPixelRect.width * scale,
+            height: videoPixelRect.height * scale
+        )
+
+        let rect = displayRect
+
+        // Green for detected, blue for predicted
+        let boxColor = state == .detected ? Color.green : Color.blue
+
+        ZStack(alignment: .topLeading) {
+            // Dashed bounding box
+            Rectangle()
+                .stroke(
+                    boxColor,
+                    style: StrokeStyle(lineWidth: 2, dash: [5, 5])
+                )
+                .background(
+                    boxColor.opacity(0.1)
+                )
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+
+            // State indicator
+            Text(state == .detected ? "DETECTED" : "PREDICTED")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(boxColor.opacity(0.8))
+                .cornerRadius(3)
+                .offset(x: rect.minX, y: rect.minY - 18)
         }
     }
 }

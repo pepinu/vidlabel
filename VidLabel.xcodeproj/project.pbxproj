@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B74C7FA42EA975CF00393FD5 /* OpenCV.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = B74C7FA32EA975CF00393FD5 /* OpenCV.xcconfig */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B74C7F762EA8EDA500393FD5 /* VidLabel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VidLabel.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B74C7FA32EA975CF00393FD5 /* OpenCV.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = OpenCV.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +39,7 @@
 			children = (
 				B74C7F782EA8EDA500393FD5 /* VidLabel */,
 				B74C7F772EA8EDA500393FD5 /* Products */,
+				B74C7FA32EA975CF00393FD5 /* OpenCV.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B74C7FA42EA975CF00393FD5 /* OpenCV.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -127,6 +134,7 @@
 /* Begin XCBuildConfiguration section */
 		B74C7F802EA8EDA600393FD5 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B74C7FA32EA975CF00393FD5 /* OpenCV.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -190,6 +198,7 @@
 		};
 		B74C7F812EA8EDA600393FD5 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B74C7FA32EA975CF00393FD5 /* OpenCV.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
