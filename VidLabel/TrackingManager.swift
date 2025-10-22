@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import Vision
+import CoreImage
 
 class TrackingManager {
 
@@ -93,6 +94,37 @@ class TrackingManager {
 
     // MARK: - Private
 
+    private let ciContext = CIContext()
+
+    private func enhanceImage(_ cgImage: CGImage) -> CGImage {
+        let sourceCIImage = CIImage(cgImage: cgImage)
+
+        // 1. Increase Contrast
+        guard let contrastFilter = CIFilter(name: "CIColorControls") else {
+            return cgImage
+        }
+        contrastFilter.setValue(sourceCIImage, forKey: kCIInputImageKey)
+        contrastFilter.setValue(1.5, forKey: kCIInputContrastKey)
+
+        // 2. Sharpen the image
+        guard let sharpenFilter = CIFilter(name: "CIUnsharpMask"),
+              let contrastOutputImage = contrastFilter.outputImage else {
+            return cgImage
+        }
+        sharpenFilter.setValue(contrastOutputImage, forKey: kCIInputImageKey)
+        sharpenFilter.setValue(2.5, forKey: kCIInputRadiusKey)
+        sharpenFilter.setValue(0.5, forKey: kCIInputIntensityKey)
+
+        guard let outputCIImage = sharpenFilter.outputImage,
+              let enhancedCGImage = ciContext.createCGImage(outputCIImage, from: sourceCIImage.extent)
+        else {
+            // If filtering fails for any reason, return the original image
+            return cgImage
+        }
+
+        return enhancedCGImage
+    }
+
     private enum Direction { case forward, backward }
 
     private func performVisionTracking(
@@ -132,9 +164,13 @@ class TrackingManager {
             let time = CMTime(seconds: Double(frameNumber) / frameRate, preferredTimescale: 600)
 
             // Extract frame image
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+            guard var cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
                 throw TrackingError.frameExtractionFailed
             }
+
+            // Enhance the image to improve tracking robustness
+            cgImage = enhanceImage(cgImage)
+
             // Create tracking request from last observation
             let request = VNTrackObjectRequest(detectedObjectObservation: currentObservation)
             request.trackingLevel = .accurate
