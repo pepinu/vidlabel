@@ -13,5 +13,6 @@ struct VidLabelApp: App {
         WindowGroup {
             ContentView()
         }
+        .defaultSize(width: 1600, height: 900) // 16:9 aspect ratio
     }
 }
