@@ -17,6 +17,7 @@ struct ObjectRowView: View {
     let onTrackBackward: (() -> Void)?
     let onTrimAfter: (() -> Void)?
     let onTrimBefore: (() -> Void)?
+    let onDeleteFrame: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 4) {
@@ -85,6 +86,22 @@ struct ObjectRowView: View {
                         .help("Track forward from this frame")
                     }
                 }
+
+                // Delete current frame button
+                if let onDeleteFrame = onDeleteFrame {
+                    Button(action: onDeleteFrame) {
+                        HStack(spacing: 2) {
+                            Image(systemName: "minus.circle")
+                            Text("Delete Frame")
+                        }
+                        .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .foregroundColor(.red)
+                    .help("Delete annotation for this frame only")
+                }
+
                 // Trimming controls
                 HStack(spacing: 4) {
                     if let onTrimBefore = onTrimBefore {

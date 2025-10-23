@@ -133,7 +133,7 @@ struct ContentView: View {
                         )
                         .scaleEffect(zoomScale, anchor: .topLeading)
                         .offset(x: zoomOffset.width, y: zoomOffset.height)
-                        .allowsHitTesting(annotationViewModel.selectedObjectId != nil)
+                        .allowsHitTesting(annotationViewModel.selectedObjectId != nil || annotationViewModel.isDrawingDetectionROI || annotationViewModel.isDrawingDeadZone)
 
                         // Video info overlay
                         VStack {
@@ -143,7 +143,23 @@ struct ContentView: View {
                                 VStack(alignment: .trailing, spacing: 4) {
                                     Text("Frame: \(viewModel.currentFrameNumber) / \(viewModel.totalFrames)")
                                     Text("Size: \(Int(viewModel.videoSize.width))×\(Int(viewModel.videoSize.height))")
-                                    if let selectedObject = annotationViewModel.selectedObject {
+                                    if annotationViewModel.isDrawingDetectionROI {
+                                        Divider()
+                                            .background(Color.white)
+                                        Text("Drawing: Detection ROI")
+                                            .foregroundColor(.purple)
+                                        Text("Drag to draw ROI box")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.gray)
+                                    } else if annotationViewModel.isDrawingDeadZone {
+                                        Divider()
+                                            .background(Color.white)
+                                        Text("Drawing: Dead Zone")
+                                            .foregroundColor(.red)
+                                        Text("Drag to draw exclusion zone")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.gray)
+                                    } else if let selectedObject = annotationViewModel.selectedObject {
                                         Divider()
                                             .background(Color.white)
                                         Text("Drawing: \(selectedObject.label)")
@@ -388,6 +404,9 @@ struct ContentView: View {
                             },
                             onTrimBefore: {
                                 annotationViewModel.trimAnnotationsBefore(objectId: object.id, frameNumber: viewModel.currentFrameNumber)
+                            },
+                            onDeleteFrame: {
+                                annotationViewModel.deleteAnnotationAtFrame(objectId: object.id, frameNumber: viewModel.currentFrameNumber)
                             }
                         )
                     }

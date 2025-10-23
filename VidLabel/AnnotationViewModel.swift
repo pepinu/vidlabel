@@ -36,6 +36,10 @@ class AnnotationViewModel: ObservableObject {
     @Published var isAutoDetecting: Bool = false
     @Published var detectionProgress: String = ""
     private var detectionManager: MotionDetectionManager?
+    @Published var detectionROI: BoundingBox?
+    @Published var isDrawingDetectionROI: Bool = false
+    @Published var detectionDeadZones: [BoundingBox] = []
+    @Published var isDrawingDeadZone: Bool = false
 
     var selectedObject: TrackedObject? {
         guard let id = selectedObjectId else { return nil }
@@ -81,6 +85,14 @@ class AnnotationViewModel: ObservableObject {
         }
     }
 
+    func deleteAnnotationAtFrame(objectId: UUID, frameNumber: Int) {
+        guard let idx = trackedObjects.firstIndex(where: { $0.id == objectId }) else { return }
+        var obj = trackedObjects[idx]
+        obj.annotations.removeValue(forKey: frameNumber)
+        trackedObjects[idx] = obj
+        print("🗑️ Deleted annotation for \(obj.label) at frame \(frameNumber)")
+    }
+
     func getAnnotations(at frameNumber: Int) -> [(object: TrackedObject, box: BoundingBox)] {
         var results: [(TrackedObject, BoundingBox)] = []
         for object in trackedObjects {
@@ -94,15 +106,44 @@ class AnnotationViewModel: ObservableObject {
 
     // MARK: - Drawing State
 
+    func startDrawingDetectionROI() {
+        isDrawingDetectionROI = true
+    }
+
+    func setDetectionROI(_ roi: BoundingBox?) {
+        detectionROI = roi
+        isDrawingDetectionROI = false
+    }
+
+    func startDrawingDeadZone() {
+        isDrawingDeadZone = true
+    }
+
+    func addDeadZone(_ zone: BoundingBox) {
+        detectionDeadZones.append(zone)
+        isDrawingDeadZone = false
+    }
+
+    func removeDeadZone(at index: Int) {
+        guard index >= 0 && index < detectionDeadZones.count else { return }
+        detectionDeadZones.remove(at: index)
+    }
+
+    func clearAllDeadZones() {
+        detectionDeadZones.removeAll()
+    }
+
     func startDrawing(at point: CGPoint, viewCoordinate: CGPoint, viewSize: CGSize) {
         currentDrawingStart = point
         currentDrawingEnd = point
         isDrawingMode = true
 
-        // Enable zoom centered on click point (store view coordinates for zoom)
-        zoomCenter = viewCoordinate
-        zoomViewSize = viewSize
-        isZoomed = true
+        // Only enable zoom for normal annotation drawing, NOT for ROI or dead zone drawing
+        if !isDrawingDetectionROI && !isDrawingDeadZone {
+            zoomCenter = viewCoordinate
+            zoomViewSize = viewSize
+            isZoomed = true
+        }
     }
 
     func updateDrawing(to point: CGPoint) {
@@ -131,6 +172,18 @@ class AnnotationViewModel: ObservableObject {
             return nil
         }
 
+        // If drawing ROI, set it and finish
+        if isDrawingDetectionROI {
+            detectionROI = box
+            isDrawingDetectionROI = false
+        }
+
+        // If drawing dead zone, add it to the list
+        if isDrawingDeadZone {
+            detectionDeadZones.append(box)
+            isDrawingDeadZone = false
+        }
+
         return box
     }
 
@@ -139,6 +192,8 @@ class AnnotationViewModel: ObservableObject {
         currentDrawingEnd = nil
         isDrawingMode = false
         isZoomed = false
+        isDrawingDetectionROI = false
+        isDrawingDeadZone = false
     }
 
     // MARK: - Tracking
@@ -325,12 +380,16 @@ class AnnotationViewModel: ObservableObject {
         asset: AVAsset,
         frameRange: ClosedRange<Int>,
         frameRate: Double,
-        videoSize: CGSize
+        videoSize: CGSize,
+        roi: BoundingBox? = nil,
+        deadZones: [BoundingBox] = []
     ) {
         isAutoDetecting = true
         detectionProgress = "Starting detection..."
 
-        let config = MotionDetectionManager.Config()
+        var config = MotionDetectionManager.Config()
+        config.roi = roi
+        config.deadZones = deadZones
         detectionManager = MotionDetectionManager(config: config)
 
         Task {

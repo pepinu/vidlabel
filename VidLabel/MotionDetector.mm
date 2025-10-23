@@ -25,6 +25,9 @@
     int misses;
     cv::Rect lastBBox;
     BOOL hasLastPos;
+    cv::Rect roi;
+    BOOL hasROI;
+    std::vector<cv::Rect> deadZones;
 }
 @end
 
@@ -48,8 +51,23 @@
         misses = 0;
         lastBBox = cv::Rect(0, 0, 0, 0);
         hasLastPos = NO;
+        hasROI = NO;
+        roi = cv::Rect(0, 0, 0, 0);
     }
     return self;
+}
+
+- (void)setROI:(CGRect)roiRect {
+    roi = cv::Rect(roiRect.origin.x, roiRect.origin.y, roiRect.size.width, roiRect.size.height);
+    hasROI = YES;
+}
+
+- (void)setDeadZones:(NSArray<NSValue *> *)deadZoneArray {
+    deadZones.clear();
+    for (NSValue *value in deadZoneArray) {
+        CGRect rect = [value rectValue];
+        deadZones.push_back(cv::Rect(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height));
+    }
 }
 
 - (void)reset {
@@ -105,7 +123,29 @@
         if (cv::contourArea(*largest) > self.minArea) {
             bbox = cv::boundingRect(*largest);
             candidate = cv::Point2f(bbox.x + bbox.width/2.0f, bbox.y + bbox.height/2.0f);
-            hasCandidate = YES;
+
+            // Check if candidate is within ROI (if ROI is set)
+            if (hasROI) {
+                if (candidate.x >= roi.x && candidate.x <= (roi.x + roi.width) &&
+                    candidate.y >= roi.y && candidate.y <= (roi.y + roi.height)) {
+                    hasCandidate = YES;
+                } else {
+                    hasCandidate = NO;
+                }
+            } else {
+                hasCandidate = YES;
+            }
+
+            // Check if candidate is in any dead zone - if so, reject it
+            if (hasCandidate && !deadZones.empty()) {
+                for (const auto& deadZone : deadZones) {
+                    if (candidate.x >= deadZone.x && candidate.x <= (deadZone.x + deadZone.width) &&
+                        candidate.y >= deadZone.y && candidate.y <= (deadZone.y + deadZone.height)) {
+                        hasCandidate = NO;
+                        break;
+                    }
+                }
+            }
         }
     }
 

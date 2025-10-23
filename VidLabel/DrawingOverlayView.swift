@@ -62,22 +62,61 @@ struct DrawingOverlayView: View {
                     }
                 }
 
+                // Detection ROI (purple dashed box)
+                if let roi = annotationViewModel.detectionROI {
+                    ROIBoxView(
+                        box: roi,
+                        geometry: geometry,
+                        videoSize: videoSize
+                    )
+                }
+
+                // Dead Zones (red dashed boxes)
+                ForEach(Array(annotationViewModel.detectionDeadZones.enumerated()), id: \.offset) { index, zone in
+                    DeadZoneBoxView(
+                        box: zone,
+                        zoneNumber: index + 1,
+                        geometry: geometry,
+                        videoSize: videoSize
+                    )
+                }
+
                 // Current drawing preview
                 if annotationViewModel.isDrawingMode,
                    let start = annotationViewModel.currentDrawingStart,
-                   let end = annotationViewModel.currentDrawingEnd,
-                   let selectedObject = annotationViewModel.selectedObject {
+                   let end = annotationViewModel.currentDrawingEnd {
                     let box = BoundingBox.from(startPoint: start, endPoint: end)
-                    BoundingBoxView(
-                        box: box,
-                        color: selectedObject.color,
-                        label: selectedObject.label,
-                        isSelected: true,
-                        isHovered: false,
-                        geometry: geometry,
-                        videoSize: videoSize,
-                        isDraft: true
-                    )
+
+                    if annotationViewModel.isDrawingDetectionROI {
+                        // Drawing ROI preview
+                        ROIBoxView(
+                            box: box,
+                            geometry: geometry,
+                            videoSize: videoSize,
+                            isDraft: true
+                        )
+                    } else if annotationViewModel.isDrawingDeadZone {
+                        // Drawing dead zone preview
+                        DeadZoneBoxView(
+                            box: box,
+                            zoneNumber: annotationViewModel.detectionDeadZones.count + 1,
+                            geometry: geometry,
+                            videoSize: videoSize,
+                            isDraft: true
+                        )
+                    } else if let selectedObject = annotationViewModel.selectedObject {
+                        // Drawing normal annotation
+                        BoundingBoxView(
+                            box: box,
+                            color: selectedObject.color,
+                            label: selectedObject.label,
+                            isSelected: true,
+                            isHovered: false,
+                            geometry: geometry,
+                            videoSize: videoSize,
+                            isDraft: true
+                        )
+                    }
                 }
 
                 // Invisible overlay for mouse events
@@ -103,13 +142,20 @@ struct DrawingOverlayView: View {
                                 let normalizedPoint = normalizePoint(value.location, in: geometry.size, videoSize: videoSize)
                                 annotationViewModel.updateDrawing(to: normalizedPoint)
 
-                                if let box = annotationViewModel.finishDrawing(),
-                                   let selectedId = annotationViewModel.selectedObjectId {
-                                    annotationViewModel.addAnnotation(
-                                        boundingBox: box,
-                                        frameNumber: currentFrame,
-                                        objectId: selectedId
-                                    )
+                                // Save state before finishDrawing resets it
+                                let wasDrawingROI = annotationViewModel.isDrawingDetectionROI
+                                let wasDrawingDeadZone = annotationViewModel.isDrawingDeadZone
+
+                                if let box = annotationViewModel.finishDrawing() {
+                                    // Only add annotation if not drawing ROI or dead zone
+                                    if !wasDrawingROI && !wasDrawingDeadZone,
+                                       let selectedId = annotationViewModel.selectedObjectId {
+                                        annotationViewModel.addAnnotation(
+                                            boundingBox: box,
+                                            frameNumber: currentFrame,
+                                            objectId: selectedId
+                                        )
+                                    }
                                 }
                             }
                     )
@@ -245,6 +291,120 @@ struct ProposalBoxView: View {
                 .background(boxColor.opacity(0.8))
                 .cornerRadius(3)
                 .offset(x: rect.minX, y: rect.minY - 18)
+        }
+    }
+}
+
+/// View for rendering the detection ROI (purple dashed box)
+struct ROIBoxView: View {
+    let box: BoundingBox
+    let geometry: GeometryProxy
+    let videoSize: CGSize
+    var isDraft: Bool = false
+
+    var body: some View {
+        // Calculate actual video display rect (accounting for aspect ratio)
+        let videoRect = AVMakeRect(aspectRatio: videoSize, insideRect: CGRect(origin: .zero, size: geometry.size))
+
+        // Convert normalized coordinates to video pixels
+        let videoPixelRect = box.rect(in: videoSize)
+
+        // Scale to displayed size
+        let scale = videoRect.width / videoSize.width
+        let displayRect = CGRect(
+            x: videoRect.minX + videoPixelRect.minX * scale,
+            y: videoRect.minY + videoPixelRect.minY * scale,
+            width: videoPixelRect.width * scale,
+            height: videoPixelRect.height * scale
+        )
+
+        let rect = displayRect
+        let boxColor = Color.purple
+
+        ZStack(alignment: .topLeading) {
+            // Dashed bounding box (thicker for ROI)
+            Rectangle()
+                .stroke(
+                    boxColor,
+                    style: StrokeStyle(lineWidth: isDraft ? 2 : 3, dash: [8, 4])
+                )
+                .background(
+                    boxColor.opacity(isDraft ? 0.15 : 0.1)
+                )
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+
+            // Label
+            Text("DETECTION ROI")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(boxColor.opacity(0.9))
+                .cornerRadius(3)
+                .offset(x: rect.minX, y: rect.minY - 20)
+        }
+    }
+}
+
+/// View for rendering a dead zone (red dashed box with X pattern)
+struct DeadZoneBoxView: View {
+    let box: BoundingBox
+    let zoneNumber: Int
+    let geometry: GeometryProxy
+    let videoSize: CGSize
+    var isDraft: Bool = false
+
+    var body: some View {
+        // Calculate actual video display rect (accounting for aspect ratio)
+        let videoRect = AVMakeRect(aspectRatio: videoSize, insideRect: CGRect(origin: .zero, size: geometry.size))
+
+        // Convert normalized coordinates to video pixels
+        let videoPixelRect = box.rect(in: videoSize)
+
+        // Scale to displayed size
+        let scale = videoRect.width / videoSize.width
+        let displayRect = CGRect(
+            x: videoRect.minX + videoPixelRect.minX * scale,
+            y: videoRect.minY + videoPixelRect.minY * scale,
+            width: videoPixelRect.width * scale,
+            height: videoPixelRect.height * scale
+        )
+
+        let rect = displayRect
+        let boxColor = Color.red
+
+        ZStack(alignment: .topLeading) {
+            // Dashed bounding box
+            Rectangle()
+                .stroke(
+                    boxColor,
+                    style: StrokeStyle(lineWidth: isDraft ? 2 : 3, dash: [8, 4])
+                )
+                .background(
+                    boxColor.opacity(isDraft ? 0.2 : 0.15)
+                )
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+
+            // X pattern to make it more obvious
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+                path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+                path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            }
+            .stroke(boxColor.opacity(0.5), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
+
+            // Label
+            Text("DEAD ZONE \(zoneNumber)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(boxColor.opacity(0.9))
+                .cornerRadius(3)
+                .offset(x: rect.minX, y: rect.minY - 20)
         }
     }
 }

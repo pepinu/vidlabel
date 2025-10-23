@@ -27,6 +27,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithHistory:(int)history varThreshold:(double)varThreshold;
 - (void)reset;
+- (void)setROI:(CGRect)roi;  // Set region of interest (pixel coordinates)
+- (void)setDeadZones:(NSArray<NSValue *> *)deadZones;  // Set dead zones (array of CGRect as NSValue)
 - (MotionDetectionResult *)processFrame:(CGImageRef)frame;
 
 @end

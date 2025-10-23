@@ -19,6 +19,10 @@ struct AutoDetectPanelView: View {
     @State private var deleteRangeStart: String = ""
     @State private var deleteRangeEnd: String = ""
 
+    // ROI state
+    @State private var detectionROI: BoundingBox?
+    @State private var isDrawingROI: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Auto-Detection")
@@ -46,6 +50,78 @@ struct AutoDetectPanelView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
                     }
+
+                    Divider()
+
+                    // ROI controls
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Region of Interest (ROI)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        if let roi = detectionROI {
+                            HStack {
+                                Text("ROI set")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                Spacer()
+                                Button("Clear ROI") {
+                                    detectionROI = nil
+                                    annotationVM.setDetectionROI(nil)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                            }
+                        } else {
+                            Button("Draw ROI") {
+                                isDrawingROI = true
+                                annotationVM.startDrawingDetectionROI()
+                            }
+                            .buttonStyle(.bordered)
+                            .help("Draw a region to limit detection")
+                        }
+                    }
+
+                    Divider()
+
+                    // Dead Zone controls
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Dead Zones (Exclusion)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        if !annotationVM.detectionDeadZones.isEmpty {
+                            VStack(spacing: 4) {
+                                ForEach(Array(annotationVM.detectionDeadZones.enumerated()), id: \.offset) { index, _ in
+                                    HStack {
+                                        Text("Zone \(index + 1)")
+                                            .font(.caption)
+                                            .foregroundColor(.red)
+                                        Spacer()
+                                        Button("Remove") {
+                                            annotationVM.removeDeadZone(at: index)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.mini)
+                                    }
+                                }
+
+                                Button("Clear All") {
+                                    annotationVM.clearAllDeadZones()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                            }
+                        }
+
+                        Button("Draw Dead Zone") {
+                            annotationVM.startDrawingDeadZone()
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Draw zones where detection should be blocked")
+                    }
+
+                    Divider()
 
                     Button("Start Detection") {
                         startDetection()
@@ -144,11 +220,16 @@ struct AutoDetectPanelView: View {
         let validStart = max(0, min(start, playerVM.totalFrames - 1))
         let validEnd = max(validStart, min(end, playerVM.totalFrames - 1))
 
+        // Sync local ROI state
+        detectionROI = annotationVM.detectionROI
+
         annotationVM.startAutoDetection(
             asset: asset,
             frameRange: validStart...validEnd,
             frameRate: playerVM.getFrameRate(),
-            videoSize: playerVM.videoSize
+            videoSize: playerVM.videoSize,
+            roi: annotationVM.detectionROI,
+            deadZones: annotationVM.detectionDeadZones
         )
     }
 

@@ -20,6 +20,8 @@ class MotionDetectionManager {
         var smoothAlpha: Double = 0.5         // Velocity smoothing factor (0-1)
         var history: Int = 500                // MOG2 history
         var varThreshold: Double = 25.0       // MOG2 variance threshold
+        var roi: BoundingBox?                 // Optional region of interest (normalized 0-1)
+        var deadZones: [BoundingBox] = []     // Dead zones where detection is blocked (normalized 0-1)
     }
 
     struct DetectionResult {
@@ -75,6 +77,31 @@ class MotionDetectionManager {
         detector?.maxJumpDistance = config.maxJumpDistance
         detector?.maxMisses = Int32(config.maxMisses)
         detector?.smoothAlpha = config.smoothAlpha
+
+        // Set ROI if provided (convert normalized to pixel coordinates)
+        if let roi = config.roi {
+            let roiRect = CGRect(
+                x: roi.x * videoSize.width,
+                y: roi.y * videoSize.height,
+                width: roi.width * videoSize.width,
+                height: roi.height * videoSize.height
+            )
+            detector?.setROI(roiRect)
+        }
+
+        // Set dead zones if provided (convert normalized to pixel coordinates)
+        if !config.deadZones.isEmpty {
+            let deadZoneRects = config.deadZones.map { zone -> NSValue in
+                let rect = CGRect(
+                    x: zone.x * videoSize.width,
+                    y: zone.y * videoSize.height,
+                    width: zone.width * videoSize.width,
+                    height: zone.height * videoSize.height
+                )
+                return NSValue(rect: rect)
+            }
+            detector?.setDeadZones(deadZoneRects)
+        }
 
         // Image generator for frame extraction
         let generator = AVAssetImageGenerator(asset: asset)
