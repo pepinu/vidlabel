@@ -59,7 +59,7 @@ struct AutoDetectPanelView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
-                        if let roi = detectionROI {
+                        if detectionROI != nil {
                             HStack {
                                 Text("ROI set")
                                     .font(.caption)

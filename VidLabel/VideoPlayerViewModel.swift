@@ -19,6 +19,8 @@ class VideoPlayerViewModel: ObservableObject {
     @Published var totalFrames: Int = 0
     @Published var videoSize: CGSize = .zero
     @Published var isVideoLoaded: Bool = false
+    @Published var volume: Float = 0.5 // 0.0 to 1.0
+    @Published var isMuted: Bool = false
 
     // MARK: - Private Properties
     private var player: AVPlayer?
@@ -106,6 +108,8 @@ class VideoPlayerViewModel: ObservableObject {
                     self.playerItem = item
                     self.player = AVPlayer(playerItem: item)
                     self.player?.actionAtItemEnd = .none // Will loop
+                    self.player?.volume = self.volume
+                    self.player?.isMuted = self.isMuted
 
                     // Set duration if available
                     if let assetDuration = assetDuration {
@@ -237,6 +241,26 @@ class VideoPlayerViewModel: ObservableObject {
 
     func getVideoURL() -> URL? {
         return videoURL
+    }
+
+    func setVolume(_ volume: Float) {
+        self.volume = max(0.0, min(1.0, volume)) // Clamp between 0 and 1
+        player?.volume = self.volume
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        player?.isMuted = isMuted
+    }
+
+    func mute() {
+        isMuted = true
+        player?.isMuted = true
+    }
+
+    func unmute() {
+        isMuted = false
+        player?.isMuted = false
     }
 
     // MARK: - Private Methods

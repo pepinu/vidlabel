@@ -55,6 +55,33 @@ struct BoundingBox: Identifiable, Codable, Equatable {
     }
 }
 
+/// Represents a category for tracked objects
+struct ObjectCategory: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var supercategory: String?
+    var color: CodableColor
+
+    init(id: UUID = UUID(), name: String, supercategory: String? = nil, color: CodableColor = CodableColor.random()) {
+        self.id = id
+        self.name = name
+        self.supercategory = supercategory
+        self.color = color
+    }
+
+    // Default categories
+    static let defaultCategories: [ObjectCategory] = [
+        ObjectCategory(name: "Object", supercategory: nil, color: CodableColor(red: 0.5, green: 0.5, blue: 0.5)),
+        ObjectCategory(name: "Person", supercategory: nil, color: CodableColor(red: 1.0, green: 0.5, blue: 0.5)),
+        ObjectCategory(name: "Vehicle", supercategory: nil, color: CodableColor(red: 0.5, green: 0.5, blue: 1.0)),
+        ObjectCategory(name: "Car", supercategory: "Vehicle", color: CodableColor(red: 0.3, green: 0.3, blue: 0.9)),
+        ObjectCategory(name: "Truck", supercategory: "Vehicle", color: CodableColor(red: 0.4, green: 0.4, blue: 0.8)),
+        ObjectCategory(name: "Animal", supercategory: nil, color: CodableColor(red: 0.5, green: 1.0, blue: 0.5)),
+        ObjectCategory(name: "Dog", supercategory: "Animal", color: CodableColor(red: 0.3, green: 0.9, blue: 0.3)),
+        ObjectCategory(name: "Cat", supercategory: "Animal", color: CodableColor(red: 0.4, green: 0.8, blue: 0.4))
+    ]
+}
+
 /// Represents an object being tracked with annotations across frames
 struct TrackedObject: Identifiable, Codable {
     let id: UUID
@@ -62,13 +89,17 @@ struct TrackedObject: Identifiable, Codable {
     var color: CodableColor
     var annotations: [Int: BoundingBox] // Frame number -> BoundingBox
     var isTracking: Bool // Whether this object is currently being tracked
+    var isVisible: Bool // Whether this object is visible in the overlay
+    var categoryId: UUID? // Optional category assignment
 
-    init(id: UUID = UUID(), label: String = "Object", color: CodableColor = CodableColor.random()) {
+    init(id: UUID = UUID(), label: String = "Object", color: CodableColor = CodableColor.random(), categoryId: UUID? = nil) {
         self.id = id
         self.label = label
         self.color = color
         self.annotations = [:]
         self.isTracking = false
+        self.isVisible = true
+        self.categoryId = categoryId
     }
 
     /// Get bounding box for a specific frame
@@ -145,6 +176,35 @@ struct DetectionProposal: Identifiable, Codable {
     }
 }
 
+/// Represents a video segment (chunk) for organizing long videos
+struct VideoSegment: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var startFrame: Int
+    var endFrame: Int
+    var color: CodableColor
+    var notes: String
+
+    init(id: UUID = UUID(), name: String, startFrame: Int, endFrame: Int, color: CodableColor = CodableColor.randomPastel(), notes: String = "") {
+        self.id = id
+        self.name = name
+        self.startFrame = startFrame
+        self.endFrame = endFrame
+        self.color = color
+        self.notes = notes
+    }
+
+    /// Check if a frame is within this segment
+    func contains(frame: Int) -> Bool {
+        return frame >= startFrame && frame <= endFrame
+    }
+
+    /// Get the duration of this segment in frames
+    var frameCount: Int {
+        return endFrame - startFrame + 1
+    }
+}
+
 /// Codable wrapper for NSColor
 struct CodableColor: Codable, Equatable {
     var red: Double
@@ -167,6 +227,19 @@ struct CodableColor: Codable, Equatable {
             CodableColor(red: 1.0, green: 1.0, blue: 0.3), // Yellow
             CodableColor(red: 1.0, green: 0.3, blue: 1.0), // Magenta
             CodableColor(red: 0.3, green: 1.0, blue: 1.0), // Cyan
+        ]
+        return colors.randomElement() ?? colors[0]
+    }
+
+    static func randomPastel() -> CodableColor {
+        let colors: [CodableColor] = [
+            CodableColor(red: 1.0, green: 0.7, blue: 0.7), // Pastel Red
+            CodableColor(red: 0.7, green: 1.0, blue: 0.7), // Pastel Green
+            CodableColor(red: 0.7, green: 0.7, blue: 1.0), // Pastel Blue
+            CodableColor(red: 1.0, green: 1.0, blue: 0.7), // Pastel Yellow
+            CodableColor(red: 1.0, green: 0.7, blue: 1.0), // Pastel Magenta
+            CodableColor(red: 0.7, green: 1.0, blue: 1.0), // Pastel Cyan
+            CodableColor(red: 1.0, green: 0.85, blue: 0.7), // Pastel Orange
         ]
         return colors.randomElement() ?? colors[0]
     }

@@ -18,6 +18,21 @@ struct ObjectRowView: View {
     let onTrimAfter: (() -> Void)?
     let onTrimBefore: (() -> Void)?
     let onDeleteFrame: (() -> Void)?
+    let onInterpolate: ((Int, Int) -> Void)?
+    let onToggleVisibility: (() -> Void)?
+    let onSolo: (() -> Void)?
+    let onCopy: (() -> Void)?
+    let onPaste: (() -> Void)?
+    let onPasteToRange: ((Int, Int) -> Void)?
+    let hasClipboard: Bool
+    let category: ObjectCategory? // Pass the category to display
+
+    @State private var showInterpolateSheet = false
+    @State private var interpolateFromFrame = ""
+    @State private var interpolateToFrame = ""
+    @State private var showPasteRangeSheet = false
+    @State private var pasteRangeFrom = ""
+    @State private var pasteRangeTo = ""
 
     var body: some View {
         VStack(spacing: 4) {
@@ -31,8 +46,22 @@ struct ObjectRowView: View {
 
                 // Label and annotation count
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(object.label)
-                        .font(.system(.body, weight: isSelected ? .semibold : .regular))
+                    HStack(spacing: 4) {
+                        Text(object.label)
+                            .font(.system(.body, weight: isSelected ? .semibold : .regular))
+
+                        // Category badge
+                        if let category = category {
+                            Text(category.name)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(red: category.color.red,
+                                                green: category.color.green,
+                                                blue: category.color.blue).opacity(0.3))
+                                .cornerRadius(4)
+                        }
+                    }
 
                     Text("\(object.annotations.count) frames")
                         .font(.caption)
@@ -46,6 +75,26 @@ struct ObjectRowView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                         .font(.caption)
+                }
+
+                // Visibility toggle
+                if let onToggleVisibility = onToggleVisibility {
+                    Button(action: onToggleVisibility) {
+                        Image(systemName: object.isVisible ? "eye.fill" : "eye.slash.fill")
+                            .foregroundColor(object.isVisible ? .blue : .gray)
+                    }
+                    .buttonStyle(.plain)
+                    .help(object.isVisible ? "Hide object" : "Show object")
+                }
+
+                // Solo button
+                if let onSolo = onSolo, object.isVisible {
+                    Button(action: onSolo) {
+                        Image(systemName: "person.fill")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Solo this object (hide all others)")
                 }
 
                 // Delete button
@@ -129,6 +178,76 @@ struct ObjectRowView: View {
                         .help("Remove annotations after current frame")
                     }
                 }
+
+                // Interpolation button
+                if let onInterpolate = onInterpolate {
+                    Button(action: {
+                        interpolateFromFrame = "\(currentFrame)"
+                        interpolateToFrame = ""
+                        showInterpolateSheet = true
+                    }) {
+                        HStack(spacing: 2) {
+                            Image(systemName: "waveform.path")
+                            Text("Interpolate")
+                        }
+                        .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Interpolate between keyframes")
+                }
+
+                // Copy/Paste buttons
+                HStack(spacing: 4) {
+                    // Copy button (only show if annotation exists)
+                    if let onCopy = onCopy {
+                        Button(action: onCopy) {
+                            HStack(spacing: 2) {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Copy annotation (Cmd+C)")
+                    }
+                }
+            }
+
+            // Paste buttons (show even if no annotation at current frame)
+            if hasClipboard {
+                HStack(spacing: 4) {
+                    if let onPaste = onPaste {
+                        Button(action: onPaste) {
+                            HStack(spacing: 2) {
+                                Image(systemName: "doc.on.clipboard")
+                                Text("Paste")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Paste annotation to current frame (Cmd+V)")
+                    }
+
+                    if let onPasteToRange = onPasteToRange {
+                        Button(action: {
+                            pasteRangeFrom = "\(currentFrame)"
+                            pasteRangeTo = ""
+                            showPasteRangeSheet = true
+                        }) {
+                            HStack(spacing: 2) {
+                                Image(systemName: "doc.on.clipboard.fill")
+                                Text("Paste to Range")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Paste annotation to frame range")
+                    }
+                }
             }
         }
         .padding(8)
@@ -137,5 +256,125 @@ struct ObjectRowView: View {
         .onTapGesture {
             onSelect()
         }
+        .sheet(isPresented: $showInterpolateSheet) {
+            InterpolateSheet(
+                fromFrame: $interpolateFromFrame,
+                toFrame: $interpolateToFrame,
+                onInterpolate: {
+                    if let from = Int(interpolateFromFrame),
+                       let to = Int(interpolateToFrame),
+                       to > from {
+                        onInterpolate?(from, to)
+                        showInterpolateSheet = false
+                    }
+                },
+                onCancel: {
+                    showInterpolateSheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $showPasteRangeSheet) {
+            PasteRangeSheet(
+                fromFrame: $pasteRangeFrom,
+                toFrame: $pasteRangeTo,
+                onPaste: {
+                    if let from = Int(pasteRangeFrom),
+                       let to = Int(pasteRangeTo),
+                       to >= from {
+                        onPasteToRange?(from, to)
+                        showPasteRangeSheet = false
+                    }
+                },
+                onCancel: {
+                    showPasteRangeSheet = false
+                }
+            )
+        }
+    }
+}
+
+struct InterpolateSheet: View {
+    @Binding var fromFrame: String
+    @Binding var toFrame: String
+    let onInterpolate: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Interpolate Between Keyframes")
+                .font(.headline)
+
+            Text("Create smooth motion between two annotated frames")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("From Frame (keyframe):")
+                TextField("Start frame", text: $fromFrame)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("To Frame (keyframe):")
+                TextField("End frame", text: $toFrame)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Interpolate") {
+                    onInterpolate()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 350, height: 250)
+    }
+}
+
+struct PasteRangeSheet: View {
+    @Binding var fromFrame: String
+    @Binding var toFrame: String
+    let onPaste: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Paste Annotation to Frame Range")
+                .font(.headline)
+
+            Text("Paste the copied annotation to all frames in the specified range")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("From Frame:")
+                TextField("Start frame", text: $fromFrame)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("To Frame:")
+                TextField("End frame", text: $toFrame)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Paste") {
+                    onPaste()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 350, height: 250)
     }
 }

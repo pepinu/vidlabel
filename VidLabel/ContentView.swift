@@ -14,6 +14,10 @@ struct ContentView: View {
     @State private var isDraggingTimeline = false
     @State private var showObjectsSidebar = true
     @State private var showAutoDetectPanel = false
+    @State private var showSegmentPanel = false
+    @State private var showProgressPanel = false
+    @State private var selectedCategoryForNewObject: UUID? = nil
+    @State private var showCategoryManager = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,11 +29,41 @@ struct ContentView: View {
                 Spacer()
 
                 if viewModel.isVideoLoaded {
+                    // Progress toggle
+                    Button(action: {
+                        showProgressPanel.toggle()
+                        if showProgressPanel {
+                            showObjectsSidebar = false
+                            showAutoDetectPanel = false
+                            showSegmentPanel = false
+                        }
+                    }) {
+                        Image(systemName: "chart.bar.fill")
+                        Text(showProgressPanel ? "Hide Progress" : "Progress")
+                    }
+                    .buttonStyle(.bordered)
+
+                    // Segment toggle
+                    Button(action: {
+                        showSegmentPanel.toggle()
+                        if showSegmentPanel {
+                            showObjectsSidebar = false
+                            showAutoDetectPanel = false
+                            showProgressPanel = false
+                        }
+                    }) {
+                        Image(systemName: "rectangle.3.group")
+                        Text(showSegmentPanel ? "Hide Segments" : "Segments")
+                    }
+                    .buttonStyle(.bordered)
+
                     // Auto-Detect toggle
                     Button(action: {
                         showAutoDetectPanel.toggle()
                         if showAutoDetectPanel {
                             showObjectsSidebar = false
+                            showSegmentPanel = false
+                            showProgressPanel = false
                         }
                     }) {
                         Image(systemName: "wand.and.stars")
@@ -51,6 +85,8 @@ struct ContentView: View {
                         Button(action: {
                             showObjectsSidebar = true
                             showAutoDetectPanel = false
+                            showSegmentPanel = false
+                            showProgressPanel = false
                         }) {
                             Image(systemName: "sidebar.right")
                             Text("Show Objects")
@@ -78,6 +114,50 @@ struct ContentView: View {
             handleDeleteKey()
             return .handled
         }
+        .onKeyPress(.upArrow) {
+            handleUpArrowKey()
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            handleDownArrowKey()
+            return .handled
+        }
+        .onKeyPress(phases: .down) { press in
+            // Shift + Right Arrow: Jump to next annotation
+            if press.key == .rightArrow && press.modifiers.contains(.shift) {
+                jumpToNextAnnotation()
+                return .handled
+            }
+            // Shift + Left Arrow: Jump to previous annotation
+            if press.key == .leftArrow && press.modifiers.contains(.shift) {
+                jumpToPreviousAnnotation()
+                return .handled
+            }
+            // Cmd + Z: Undo
+            if press.key == KeyEquivalent("z") && press.modifiers.contains(.command) && !press.modifiers.contains(.shift) {
+                handleUndo()
+                return .handled
+            }
+            // Cmd + Shift + Z: Redo
+            if press.key == KeyEquivalent("z") && press.modifiers.contains(.command) && press.modifiers.contains(.shift) {
+                handleRedo()
+                return .handled
+            }
+            // Cmd + C: Copy
+            if press.key == KeyEquivalent("c") && press.modifiers.contains(.command) {
+                handleCopy()
+                return .handled
+            }
+            // Cmd + V: Paste
+            if press.key == KeyEquivalent("v") && press.modifiers.contains(.command) {
+                handlePaste()
+                return .handled
+            }
+            return .ignored
+        }
+        .sheet(isPresented: $showCategoryManager) {
+            CategoryManagerView(annotationVM: annotationViewModel)
+        }
     }
 
     // MARK: - Keyboard Shortcuts
@@ -89,10 +169,77 @@ struct ContentView: View {
         annotationViewModel.removeAnnotation(at: viewModel.currentFrameNumber, objectId: selectedId)
     }
 
+    private func handleUpArrowKey() {
+        // Up Arrow: Jump to previous frame with selected object's annotation
+        if let frame = annotationViewModel.getPreviousFrameForSelectedObject(from: viewModel.currentFrameNumber) {
+            viewModel.seekToFrame(frame)
+        }
+    }
+
+    private func handleDownArrowKey() {
+        // Down Arrow: Jump to next frame with selected object's annotation
+        if let frame = annotationViewModel.getNextFrameForSelectedObject(from: viewModel.currentFrameNumber) {
+            viewModel.seekToFrame(frame)
+        }
+    }
+
+    private func jumpToNextAnnotation() {
+        if let frame = annotationViewModel.getNextAnnotatedFrame(from: viewModel.currentFrameNumber, totalFrames: viewModel.totalFrames) {
+            viewModel.seekToFrame(frame)
+        }
+    }
+
+    private func jumpToPreviousAnnotation() {
+        if let frame = annotationViewModel.getPreviousAnnotatedFrame(from: viewModel.currentFrameNumber) {
+            viewModel.seekToFrame(frame)
+        }
+    }
+
+    private func handleUndo() {
+        annotationViewModel.undoManager.undo(viewModel: annotationViewModel)
+    }
+
+    private func handleRedo() {
+        annotationViewModel.undoManager.redo(viewModel: annotationViewModel)
+    }
+
+    private func handleCopy() {
+        guard let selectedId = annotationViewModel.selectedObjectId else { return }
+        annotationViewModel.copyAnnotation(objectId: selectedId, frameNumber: viewModel.currentFrameNumber)
+    }
+
+    private func handlePaste() {
+        guard let selectedId = annotationViewModel.selectedObjectId else { return }
+        guard annotationViewModel.hasClipboard else { return }
+        annotationViewModel.pasteAnnotation(toObjectId: selectedId, toFrame: viewModel.currentFrameNumber)
+    }
+
     // MARK: - Video Content View
 
     private var videoContentView: some View {
         HStack(spacing: 0) {
+            // Progress panel (left side)
+            if showProgressPanel {
+                ProgressStatsView(
+                    annotationVM: annotationViewModel,
+                    totalFrames: viewModel.totalFrames
+                )
+                Divider()
+            }
+
+            // Segment panel (left side)
+            if showSegmentPanel {
+                SegmentPanelView(
+                    annotationVM: annotationViewModel,
+                    currentFrame: viewModel.currentFrameNumber,
+                    totalFrames: viewModel.totalFrames,
+                    onJumpToFrame: { frame in
+                        viewModel.seekToFrame(frame)
+                    }
+                )
+                Divider()
+            }
+
             // Auto-Detect panel (left side)
             if showAutoDetectPanel {
                 AutoDetectPanelView(
@@ -241,6 +388,17 @@ struct ContentView: View {
 
     private var playbackControlsView: some View {
         VStack(spacing: 12) {
+            // Timeline Heatmap with Segments
+            TimelineHeatmapView(
+                annotationVM: annotationViewModel,
+                currentFrame: viewModel.currentFrameNumber,
+                totalFrames: viewModel.totalFrames,
+                onSeek: { frame in
+                    viewModel.seekToFrame(frame)
+                }
+            )
+            .padding(.horizontal)
+
             // Timeline slider
             HStack(spacing: 12) {
                 Text(viewModel.currentTimeString)
@@ -314,6 +472,30 @@ struct ContentView: View {
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [])
                 .help("Next frame (→)")
+
+                Divider()
+                    .frame(height: 30)
+
+                // Volume controls
+                HStack(spacing: 8) {
+                    // Mute/Unmute button
+                    Button(action: { viewModel.toggleMute() }) {
+                        Image(systemName: viewModel.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .help(viewModel.isMuted ? "Unmute (M)" : "Mute (M)")
+                    .keyboardShortcut("m", modifiers: [])
+
+                    // Volume slider
+                    Slider(value: Binding(
+                        get: { Double(viewModel.volume) },
+                        set: { viewModel.setVolume(Float($0)) }
+                    ), in: 0...1)
+                    .frame(width: 100)
+                    .disabled(viewModel.isMuted)
+                    .help("Volume")
+                }
             }
             .padding(.bottom, 8)
         }
@@ -363,10 +545,70 @@ struct ContentView: View {
                 Divider()
             }
 
+            // Visibility controls
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("Opacity:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Slider(value: $annotationViewModel.nonSelectedOpacity, in: 0.1...1.0)
+                        .frame(maxWidth: 120)
+                    Text("\(Int(annotationViewModel.nonSelectedOpacity * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 35)
+                    Button("Show All") {
+                        annotationViewModel.showAllObjects()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help("Show all hidden objects")
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
+            .background(Color.secondary.opacity(0.1))
+
+            Divider()
+
+            // Category filter
+            HStack(spacing: 8) {
+                Text("Category:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Picker("", selection: $annotationViewModel.selectedCategoryFilter) {
+                    Text("All").tag(nil as UUID?)
+                    ForEach(annotationViewModel.categories) { category in
+                        Text(category.name).tag(category.id as UUID?)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 120)
+
+                Button(action: {
+                    showCategoryManager = true
+                }) {
+                    Image(systemName: "gear")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Manage categories")
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.05))
+
+            Divider()
+
             // Objects list
             ScrollView {
                 VStack(spacing: 8) {
-                    ForEach(annotationViewModel.trackedObjects) { object in
+                    ForEach(annotationViewModel.filteredTrackedObjects) { object in
+                        let category = object.categoryId.flatMap { catId in
+                            annotationViewModel.categories.first(where: { $0.id == catId })
+                        }
+
                         ObjectRowView(
                             object: object,
                             isSelected: annotationViewModel.selectedObjectId == object.id,
@@ -407,7 +649,27 @@ struct ContentView: View {
                             },
                             onDeleteFrame: {
                                 annotationViewModel.deleteAnnotationAtFrame(objectId: object.id, frameNumber: viewModel.currentFrameNumber)
-                            }
+                            },
+                            onInterpolate: { fromFrame, toFrame in
+                                annotationViewModel.interpolate(objectId: object.id, fromFrame: fromFrame, toFrame: toFrame)
+                            },
+                            onToggleVisibility: {
+                                annotationViewModel.toggleObjectVisibility(id: object.id)
+                            },
+                            onSolo: {
+                                annotationViewModel.soloObject(id: object.id)
+                            },
+                            onCopy: object.boundingBox(at: viewModel.currentFrameNumber) != nil ? {
+                                annotationViewModel.copyAnnotation(objectId: object.id, frameNumber: viewModel.currentFrameNumber)
+                            } : nil,
+                            onPaste: annotationViewModel.hasClipboard ? {
+                                annotationViewModel.pasteAnnotation(toObjectId: object.id, toFrame: viewModel.currentFrameNumber)
+                            } : nil,
+                            onPasteToRange: annotationViewModel.hasClipboard ? { fromFrame, toFrame in
+                                annotationViewModel.pasteAnnotationToRange(toObjectId: object.id, fromFrame: fromFrame, toFrame: toFrame)
+                            } : nil,
+                            hasClipboard: annotationViewModel.hasClipboard,
+                            category: category
                         )
                     }
                 }
@@ -438,9 +700,34 @@ struct ContentView: View {
 
             Divider()
 
+            // Category selection for new object
+            VStack(alignment: .leading, spacing: 8) {
+                Text("New Object Category:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Picker("Category", selection: $selectedCategoryForNewObject) {
+                    Text("None").tag(nil as UUID?)
+                    ForEach(annotationViewModel.categories) { category in
+                        HStack {
+                            Text(category.name)
+                            if let supercategory = category.supercategory {
+                                Text("(\(supercategory))")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .tag(category.id as UUID?)
+                    }
+                }
+                .labelsHidden()
+            }
+            .padding(.horizontal)
+            .padding(.top)
+
             // Add object button
             Button(action: {
-                _ = annotationViewModel.addObject()
+                _ = annotationViewModel.addObject(categoryId: selectedCategoryForNewObject)
                 viewModel.pause() // Pause video when adding a new object
             }) {
                 HStack {

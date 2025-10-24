@@ -46,17 +46,21 @@ struct DrawingOverlayView: View {
                     )
                 }
 
-                // Existing annotations
-                ForEach(annotations, id: \.object.id) { item in
+                // Existing annotations (filtered by visibility)
+                ForEach(annotations.filter { $0.object.isVisible }, id: \.object.id) { item in
+                    let isSelected = annotationViewModel.selectedObjectId == item.object.id
+                    let opacity = isSelected ? 1.0 : annotationViewModel.nonSelectedOpacity
+
                     BoundingBoxView(
                         box: item.box,
                         color: item.object.color,
                         label: item.object.label,
-                        isSelected: annotationViewModel.selectedObjectId == item.object.id,
+                        isSelected: isSelected,
                         isHovered: hoveredBoxId == item.object.id,
                         geometry: geometry,
                         videoSize: videoSize
                     )
+                    .opacity(opacity)
                     .onTapGesture {
                         annotationViewModel.selectObject(id: item.object.id)
                     }
